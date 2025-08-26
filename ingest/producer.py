@@ -28,7 +28,7 @@ async def fetch_and_produce_data():
     try:
 
         async with aiohttp.ClientSession() as session:
-            # Proactive Preparation ⚔️: Prepare the API request parameters.
+
             params = {
                 'vs_currency': 'usd',
                 'ids': ','.join(COIN_IDS),
@@ -37,22 +37,21 @@ async def fetch_and_produce_data():
             }
             while True:
                 try:
-                    # We make an asynchronous GET request to the CoinGecko API.
+
                     async with session.get(COINGECKO_API_URL, params=params) as response:
                         # Fail fast if the response isn't a success (200 OK).
                         response.raise_for_status()
                         data = await response.json()
-                        # We process and send each coin's data to Kafka.
+
                         for coin_data in data:
                             message = {
                                 'id': coin_data['id'],
                                 'current_price': coin_data['current_price'],
                                 'market_cap': coin_data['market_cap'],
                                 'total_volume': coin_data['total_volume'],
-                                'timestamp': datetime.utcnow().isoformat()
+                                'timestamp': datetime.now(datetime.UTC).isoformat()
                             }
-                            # Send the message to our Kafka topic. The `key` ensures all data for a
-                            # specific coin goes to the same partition, maintaining order.
+
                             await producer.send_and_wait(
                                 KAFKA_TOPIC,
                                 key=coin_data['id'].encode('utf-8'),
@@ -60,23 +59,21 @@ async def fetch_and_produce_data():
                             )
                             logger.info(f"Produced message for {coin_data['id']}")
                 except aiohttp.ClientError as e:
-                    # Handle network-related errors gracefully, and don't give up.
+
                     logger.error(f"HTTP error occurred: {e}. Retrying...")
                 except Exception as e:
-                    # Catch all other exceptions and log them for post-mortem analysis.
+
                     logger.error(f"An unexpected error occurred: {e}")
 
-                # This is our heartbeat. We sleep for a minute to avoid being rate-limited.
+
                 await asyncio.sleep(60)
     finally:
-        # Crucial for a clean shutdown and portfolio credibility.
+
         await producer.stop()
 
-# This is the entry point, the single point of failure we must manage.
+
 if __name__ == "__main__":
     try:
-        # Run the async function.
         asyncio.run(fetch_and_produce_data())
     except KeyboardInterrupt:
-        # Clean shutdown on user interrupt. This is part of building a robust system.
         logger.info("Producer stopped by user.")
