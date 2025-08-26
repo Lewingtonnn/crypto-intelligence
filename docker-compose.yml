@@ -39,16 +39,16 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=myuser
-      - POSTGRES_PASSWORD=mypassword
-      - POSTGRES_DB=cryptodb
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data/
 
   # 3. Prometheus
   prometheus:
     image: prom/prometheus:v2.45.0
-    container_name: prometheus
+    container_name: prometheus2
     hostname: prometheus
     ports:
       - "9090:9090"
@@ -65,7 +65,7 @@ services:
   # Your dashboarding tool. It visualizes the metrics scraped by Prometheus.
   grafana:
     image: grafana/grafana:10.0.3
-    container_name: grafana
+    container_name: grafana-crypto
     hostname: grafana
     ports:
       - "3000:3000"
