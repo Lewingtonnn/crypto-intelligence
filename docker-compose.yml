@@ -17,8 +17,7 @@ services:
     hostname: kafka
     ports:
       - "9092:9092"
-      - "9101:9101" # Prometheus metrics port for Kafka
-      - "9102:9102" # Prometheus metrics port for the producer/consumer apps
+      - "9101:9101" # Only Kafka's own JMX metrics port should be exposed, if needed
     depends_on:
       - zookeeper
     environment:
@@ -28,8 +27,8 @@ services:
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
-      - KAFKA_JMX_PORT=9101
-      - KAFKA_JMX_HOSTNAME=localhost
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      - JMX_PORT=9101
 
   # 2. PostgreSQL
   postgres:
@@ -60,9 +59,10 @@ services:
       - '--storage.tsdb.path=/prometheus'
     depends_on:
       - kafka
+      - producer
+      - consumer
 
   # 4. Grafana
-  # Your dashboarding tool. It visualizes the metrics scraped by Prometheus.
   grafana:
     image: grafana/grafana:10.0.3
     container_name: grafana-crypto
@@ -76,6 +76,29 @@ services:
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
+      - producer
+      - consumer
+
+  producer:
+    build: .
+    container_name: crypto-producer
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - COINS=bitcoin,ethereum,dogecoin
+      - METRICS_PORT=9101
+
+
+  consumer:
+    build: .
+    container_name: crypto-consumer
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+
+
 
 volumes:
   postgres_data:

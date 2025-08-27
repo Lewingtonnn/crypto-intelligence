@@ -1,9 +1,8 @@
-# consumer.py
-
 import asyncio
 import json
 import logging
 from aiokafka import AIOKafkaConsumer
+from prometheus_client import start_http_server
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -34,6 +33,7 @@ async def consume_data():
 # This is the entry point.
 if __name__ == "__main__":
     try:
+        start_http_server(9103)
         asyncio.run(consume_data())
     except KeyboardInterrupt:
         logger.info("Consumer stopped by user.")
