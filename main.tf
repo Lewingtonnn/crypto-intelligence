@@ -3,17 +3,29 @@ provider "aws" {
   region = "us-east-1"
 }
 
+data "http" "my_ip" {
+  url = "https://ifconfig.co/json"
+}
+
+# Fetch the ID of the default VPC
+data "aws_vpc" "default" {
+  default = true
+}
+# -------------------------------------------------------------
+
 # Create a security group to allow inbound traffic on the PostgreSQL port
 resource "aws_security_group" "db_sg" {
   name_prefix = "db-security-group-"
   description = "Allow inbound traffic to Postgres DB"
+  # Use the ID of the default VPC
+  vpc_id = data.aws_vpc.default.id
 
   ingress {
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # WARNING: This allows all IP addresses.
-                               # Use your specific IP in production.(only using this for testing and development
+    # Whitelist your IP specifically. This is secure.
+    cidr_blocks = ["${jsondecode(data.http.my_ip.response_body).ip}/32"]
   }
 }
 
@@ -28,6 +40,7 @@ resource "aws_db_instance" "crypto_pipeline_db" {
   db_name              = "cryptodb"
   publicly_accessible  = true
   skip_final_snapshot  = true
+ #refference the vpc id above
   vpc_security_group_ids = [aws_security_group.db_sg.id]
 }
 

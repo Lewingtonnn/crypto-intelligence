@@ -2,88 +2,87 @@ import asyncio
 import aiohttp
 import json
 import logging
-import os
+import time
 from aiokafka import AIOKafkaProducer
 from datetime import datetime
-from dotenv import load_dotenv
+from prometheus_client import start_http_server, Counter, Gauge
 
-from metrics import PRICE_SENT, LAST_PRICE, FAILED_MESSAGES
-from prometheus_client import start_http_server
-METRICS_PORT = int(os.getenv("METRICS_PORT", "9102"))
+from config import KAFKA_SERVERS, KAFKA_TOPIC_CRYPTO_DATA, COINGECKO_API_URL, COINS, POLLING_INTERVAL_SECONDS, \
+    METRICS_PORT_PRODUCER
 
-
-# Load env config
-load_dotenv()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# --- Logging Setup ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Config
-coins = os.getenv("COINS", "bitcoin,ethereum,dogecoin")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "crypto-market-data")
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-COINGECKO_API_URL = "https://api.coingecko.com/api/v3/coins/markets"
-
-
+# --- Prometheus Metrics Setup ---
+PRICE_SENT = Counter("crypto_prices_sent_total", "Total number of crypto price messages produced")
+LAST_PRICE = Gauge("last_crypto_price", "Last known price of a crypto coin", ["symbol"])
+FAILED_API_CALLS = Counter("api_calls_failed_total", "Total number of failed API calls")
+PRODUCER_UP = Gauge("producer_status", "Producer service status (1=up, 0=down)")
 
 
 async def fetch_and_produce_data():
-    producer = AIOKafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_serializer=lambda v: json.dumps(v).encode('utf-8')
-    )
-    await producer.start()
-    logger.info(f'Kafka Producer connected to {KAFKA_BOOTSTRAP_SERVERS}')
-
+    producer = None
     try:
+        PRODUCER_UP.set(1)
+        producer = AIOKafkaProducer(
+            bootstrap_servers=KAFKA_SERVERS,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+        await producer.start()
+        logger.info(f'✅ Kafka Producer connected to {KAFKA_SERVERS}')
+
         async with aiohttp.ClientSession() as session:
             while True:
-                params = {"vs_currency": "usd", "ids": coins}
+                params = {"vs_currency": "usd", "ids": COINS}
                 try:
-                    async with session.get(COINGECKO_API_URL, params=params) as response:
+                    async with session.get(COINGECKO_API_URL, params=params, timeout=10) as response:
                         response.raise_for_status()
                         data = await response.json()
 
                         for coin_data in data:
+                            # --- Data Validation and Transformation ---
+                            required_fields = ["id", "current_price", "market_cap", "market_cap_rank", "last_updated"]
+                            if not all(
+                                    field in coin_data and coin_data[field] is not None for field in required_fields):
+                                logger.warning(f"Skipping malformed data for coin ID: {coin_data.get('id', 'N/A')}")
+                                continue
+
                             message = {
                                 "id": coin_data["id"],
-                                "price": coin_data.get("current_price"),
-                                "market_cap": coin_data.get("market_cap"),
-                                "market_cap_rank": coin_data.get("market_cap_rank"),
-                                "price_change_percentage_24h": coin_data.get("price_change_percentage_24h"),
-                                "total_volume": coin_data.get("total_volume"),
-                                "timestamp": coin_data.get("last_updated"),
+                                "price": float(coin_data["current_price"]),
+                                "market_cap": float(coin_data["market_cap"]),
+                                "market_cap_rank": int(coin_data["market_cap_rank"]),
+                                "timestamp": int(datetime.fromisoformat(coin_data["last_updated"]).timestamp() * 1000),
                             }
-
                             await producer.send_and_wait(
-                                KAFKA_TOPIC,
+                                KAFKA_TOPIC_CRYPTO_DATA,
                                 key=coin_data["id"].encode("utf-8"),
                                 value=message,
                             )
                             logger.info(f"Produced message for {coin_data['id']}")
                             PRICE_SENT.inc()
-                            price= coin_data['price']
-                            LAST_PRICE.labels(symbol=coin_data['id']).set(price)
+                            LAST_PRICE.labels(symbol=coin_data['id']).set(coin_data['current_price'])
 
                 except aiohttp.ClientError as e:
-                    logger.error(f"HTTP error: {e}. Retrying in 60s...")
-                    FAILED_MESSAGES.inc()
+                    logger.error(f"HTTP error during API call: {e}. Retrying...")
+                    FAILED_API_CALLS.inc()
                 except Exception as e:
-                    logger.error(f"Unexpected error: {e}")
+                    logger.error(f"Unexpected error: {e}", exc_info=True)
+                    # We continue the loop to attempt recovery.
 
-                await asyncio.sleep(60)
+                await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
+    except asyncio.CancelledError:
+        logger.info("Task was cancelled, shutting down.")
     finally:
-        await producer.stop()
+        if producer:
+            await producer.stop()
+            logger.info("Kafka producer stopped.")
+        PRODUCER_UP.set(0)
 
 
 if __name__ == "__main__":
-    try:
-        start_http_server(METRICS_PORT, addr='0.0.0.0')
-        logger.info('Started http server')
-        asyncio.run(fetch_and_produce_data())
-    except KeyboardInterrupt:
-        logger.info("Producer stopped by user.")
+    start_http_server(METRICS_PORT_PRODUCER)
+    logger.info(f'✅ Prometheus server started on port {METRICS_PORT_PRODUCER}')
+    asyncio.run(fetch_and_produce_data())

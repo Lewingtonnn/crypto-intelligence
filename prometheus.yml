@@ -1,15 +1,20 @@
-global:
-  scrape_interval: 15s
-
 scrape_configs:
-  - job_name: 'kafka'
-    static_configs:
-      - targets: ['kafka:9101']   # Kafka JMX inside the Docker network
-
   - job_name: 'crypto-producer'
     static_configs:
-      - targets: ['crypto-producer:9102']  # service:container-port
+      - targets: ['host.docker.internal:9101']
 
   - job_name: 'crypto-consumer'
     static_configs:
-      - targets: ['crypto-consumer:9103']
+      - targets: ['host.docker.internal:9102']
+
+  - job_name: 'news-ingest'
+    static_configs:
+      - targets: ['host.docker.internal:9103']
+
+  - job_name: 'database'
+    static_configs:
+      - targets: ['host.docker.internal:9104']
+
+  - job_name: 'score-and-join'
+    static_configs:
+      - targets: ['host.docker.internal:9105']

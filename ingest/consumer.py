@@ -33,7 +33,7 @@ async def consume_data():
 # This is the entry point.
 if __name__ == "__main__":
     try:
-        start_http_server(9103)
+        start_http_server(9102)
         asyncio.run(consume_data())
     except KeyboardInterrupt:
         logger.info("Consumer stopped by user.")
