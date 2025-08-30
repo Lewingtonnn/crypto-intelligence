@@ -50,9 +50,6 @@ async def fetch_and_produce():
                     async with session.get(url, timeout=10) as resp:
                         resp.raise_for_status()
                         data = await resp.json()
-
-                        print(data)
-
                     if data['result'] and isinstance(data['result'], list):
                         transactions = data['result']
 
