@@ -23,7 +23,7 @@ MESSAGE_PROCESSING_ERRORS = Counter('message_processing_errors_total', 'Total nu
 DB_CONNECTION_STATUS = Gauge('db_connection_status', 'Status of the database connection (1=up, 0=down).')
 
 # --- Constants and Environment Variables ---
-BATCH_SIZE = int(os.getenv('BATCH_SIZE', 2000))
+BATCH_SIZE = int(os.getenv('BATCH_SIZE', 2))
 KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'crypto-market-data')
 DATABASE_URL = os.getenv('DATABASE_URL')
 KAFKA_SERVERS = os.getenv('KAFKA_SERVERS', 'localhost:9092')
@@ -37,11 +37,12 @@ async def create_prices_tables(conn):
     try:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS prices (
-                timestamp BIGINT PRIMARY KEY, 
+                timestamp BIGINT, 
                 id TEXT NOT NULL, 
                 price NUMERIC, 
                 market_cap NUMERIC, 
-                market_cap_rank NUMERIC
+                market_cap_rank NUMERIC,
+                CONSTRAINT prices_key PRIMARY KEY (timestamp)
             )
         """)
         log.info('Prices table checked/created successfully.')
