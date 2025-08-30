@@ -45,7 +45,7 @@ async def fetch_and_produce():
             while True:
                 try:
                     # Fetch transactions from the last processed block to the latest
-                    url = f"{BASE_URL}?module=account&action=txlist&address={WHALE_ADDRESS}&startblock={last_block}&endblock=99999999&sort=asc&apikey={API_KEY}"
+                    url = f"https://api.etherscan.io/api?module=proxy&action=eth_getBlockByNumber&tag=latest&boolean=true&apikey={API_KEY}"
                     log.info(f'attempting to fetch data from api {url}')
                     async with session.get(url, timeout=10) as resp:
                         resp.raise_for_status()

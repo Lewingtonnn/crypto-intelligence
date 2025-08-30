@@ -6,7 +6,7 @@ import decimal
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from hexbytes import HexBytes
-from eth_abi.abi import decode_abi
+from eth_abi import decode
 from web3 import Web3
 
 from dotenv import load_dotenv
@@ -75,7 +75,7 @@ async def enrich_onchain_data():
                 try:
                     # Case 1: ERC-20 Transfer
                     if function_signature == TRANSFER_SIGNATURE:
-                        to_address, value = decode_abi(
+                        to_address, value = decode(
                             ['address', 'uint256'],
                             HexBytes('0x' + tx_input[8:])
                         )
@@ -91,7 +91,7 @@ async def enrich_onchain_data():
 
                     # Case 2: ERC-20 transferFrom
                     elif function_signature == TRANSFER_FROM_SIGNATURE:
-                        from_address_param, to_address, value = decode_abi(
+                        from_address_param, to_address, value = decode(
                             ['address', 'address', 'uint256'],
                             HexBytes('0x' + tx_input[8:])
                         )
