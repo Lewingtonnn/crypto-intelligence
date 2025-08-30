@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 # --- Configuration ---
 API_KEY = os.getenv("ETHERSCAN_API_KEY")
-WHALE_ADDRESS = os.getenv("WHALE_ADDRESS", "0x00000000219ab540356cBB839Cbe05303d7705Fa")
+WHALE_ADDRESS = os.getenv("WHALE_ADDRESS", "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8")
 BASE_URL = os.getenv("ETHERSCAN_API_URL", "https://api.etherscan.io/api")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "onchain.raw")
 KAFKA_SERVERS = os.getenv("KAFKA_SERVERS", "localhost:9092")
@@ -50,6 +50,8 @@ async def fetch_and_produce():
                     async with session.get(url, timeout=10) as resp:
                         resp.raise_for_status()
                         data = await resp.json()
+
+                        print(data)
 
                     if data['result'] and isinstance(data['result'], list):
                         transactions = data['result']
