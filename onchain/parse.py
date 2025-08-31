@@ -7,7 +7,7 @@ import decimal
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from hexbytes import HexBytes
 from eth_abi import decode
-from web3 import Web3
+from eth_utils import to_checksum_address
 
 from dotenv import load_dotenv
 
@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 # --- Configuration ---
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-KAFKA_RAW_TOPIC = os.getenv("KAFKA_RAW_TOPIC", "onchain.raw")
+KAFKA_RAW_TOPIC = os.getenv("KAFKA_RAW_TOPIC", "onchain2.raw")
 KAFKA_ENRICHED_TOPIC = os.getenv("KAFKA_ENRICHED_TOPIC", "onchain.enriched")
 GROUP_ID = "onchain-enrichment-group"
 
@@ -40,7 +40,7 @@ async def enrich_onchain_data():
         KAFKA_RAW_TOPIC,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         group_id=GROUP_ID,
-        auto_offset_reset='earliest',
+        auto_offset_reset='latest',
         value_deserializer=lambda x: json.loads(x.decode('utf-8'))
     )
     producer = AIOKafkaProducer(
@@ -53,9 +53,12 @@ async def enrich_onchain_data():
     await producer.start()
 
     try:
+        log.info("On-chain enrichment process started.")
         async for msg in consumer:
+            log.info(f"Processing message at offset {msg.offset}")
             payload = msg.value.get("payload", {})
             transactions = payload.get("result", {}).get("transactions", [])
+            log.info(f"Found {len(transactions)} transactions in the message.")
 
             for tx in transactions:
                 tx_input = tx.get("input", "")
@@ -79,6 +82,7 @@ async def enrich_onchain_data():
                             ['address', 'uint256'],
                             HexBytes('0x' + tx_input[8:])
                         )
+                        to_address = to_checksum_address(to_address.hex())
                         enriched_data = {
                             "type": "transfer",
                             "from_address": tx.get("from"),
@@ -95,6 +99,8 @@ async def enrich_onchain_data():
                             ['address', 'address', 'uint256'],
                             HexBytes('0x' + tx_input[8:])
                         )
+                        to_address = to_checksum_address(to_address.hex())
+                        from_address_param=to_checksum_address(from_address_param.hex())
                         enriched_data = {
                             "type": "transferFrom",
                             "from_address": from_address_param,

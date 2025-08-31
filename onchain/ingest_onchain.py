@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 API_KEY = os.getenv("ETHERSCAN_API_KEY")
 WHALE_ADDRESS = os.getenv("WHALE_ADDRESS", "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8")
 BASE_URL = os.getenv("ETHERSCAN_API_URL", "https://api.etherscan.io/api")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "onchain.raw")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "onchain2.raw")
 KAFKA_SERVERS = os.getenv("KAFKA_SERVERS", "localhost:9092")
 PROMETHEUS_PORT = int(os.getenv("PROMETHEUS_PORT", 9106))
 
@@ -50,15 +50,16 @@ async def fetch_and_produce():
                     async with session.get(url, timeout=10) as resp:
                         resp.raise_for_status()
                         data = await resp.json()
-                    if data['result'] and isinstance(data['result'], list):
-                        transactions = data['result']
+                    if 'result' in data and data['result'] and 'transactions' in data['result']:
+                        transactions = data['result']['transactions']
+
 
                         # Sort transactions to process them in order and find the new 'last_block'
-                        transactions.sort(key=lambda x: int(x['blockNumber']))
+                        transactions.sort(key=lambda x: int(x['blockNumber'], 16))
 
                         for tx in transactions:
                             # Skip transactions from blocks we have already processed
-                            block_number = int(tx['blockNumber'])
+                            block_number = int(tx['blockNumber'], 16)
                             if block_number <= last_block:
                                 continue
 
@@ -69,7 +70,7 @@ async def fetch_and_produce():
                                 "block_number": block_number,
                                 "from_address": tx['from'],
                                 "to_address": tx['to'],
-                                "value_eth": int(tx['value']) / 10 ** 18,  # Convert from Wei to Ether
+                                "value_eth": int(tx['value'], 16) / 10 ** 18,  # Convert from Wei to Ether
                                 "payload": tx
                             }
 
@@ -89,7 +90,7 @@ async def fetch_and_produce():
                     log.critical(f"An unexpected error occurred: {e}", exc_info=True)
                     FAILED_MESSAGES.inc()
 
-                await asyncio.sleep(15)  # Fetch new data every 15 seconds
+                await asyncio.sleep(5)  # Fetch new data every 15 seconds
 
     finally:
         await producer.stop()
