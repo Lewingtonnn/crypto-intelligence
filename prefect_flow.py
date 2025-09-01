@@ -88,7 +88,7 @@ async def crypto_data_pipeline_flow():
 
 
 
-    logger.info("Crypto data pipeline flow completed.")
+    logger.info("Crypto data pipeline flows completed.")
 
 
 if __name__ == "__main__":

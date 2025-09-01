@@ -2,7 +2,7 @@ name: "processors-supervisor"
 description: "Runs data processors (enrichment + sentiment scoring)."
 version: 1
 flow_name: "processors_flow"
-entrypoint: "flow/processors_flow.py:processors_flow"
+entrypoint: "flows/processors_flow.py:processors_flow"
 work_pool:
   name: "default-agent-pool"
   work_queue_name: null

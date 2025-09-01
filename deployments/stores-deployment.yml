@@ -2,7 +2,7 @@ name: "storers-supervisor"
 description: "Runs storers that write processed data into Postgres."
 version: 1
 flow_name: "storers_flow"
-entrypoint: "flow/storers_flow.py:storers_flow"
+entrypoint: "flows/storers_flow.py:storers_flow"
 work_pool:
   name: "default-agent-pool"
   work_queue_name: null

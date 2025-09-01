@@ -2,7 +2,7 @@ name: "producers-supervisor"
 description: "Runs the Kafka producers continuously (onchain + news)."
 version: 1
 flow_name: "producers_flow"
-entrypoint: "flow/producers_flow.py:producers_flow"
+entrypoint: "flows/producers_flow.py:producers_flow"
 work_pool:
   name: "default-agent-pool"
   work_queue_name: null

@@ -20,7 +20,7 @@ async def producers_flow():
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
     except asyncio.CancelledError:
         logger.info("Producers supervisor received cancel signal. Shutting down gracefully...")
-        # Gracefully cancel pending tasks if the flow is cancelled
+        # Gracefully cancel pending tasks if the flows is cancelled
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)

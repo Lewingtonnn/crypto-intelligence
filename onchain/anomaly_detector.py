@@ -1,7 +1,7 @@
 # anomaly_detector.py
 """
 Anomaly detector refactor suitable for:
-- Running as a scheduled Prefect flow (call detect_once)
+- Running as a scheduled Prefect flows (call detect_once)
 - Running standalone as a long-running service (main_loop)
 """
 
