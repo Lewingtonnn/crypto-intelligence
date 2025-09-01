@@ -10,7 +10,7 @@ def _install_sigterm_cancel(loop):
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(_cancel_all_tasks()))
 
-@flow(name="Storers - Long Running (Consumers -> DB)")
+@flow(name="Storers - Long Running (Consumers to DB)")
 async def storers_flow():
     logger = get_run_logger()
     logger.info("Starting storers supervisor")

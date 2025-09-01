@@ -10,7 +10,7 @@ def _install_sigterm_cancel(loop):
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(_cancel_all_tasks()))
 
-@flow(name="Processors (Enrich & Score) - Long Running")
+@flow(name="Processors (Enrich and Score) - Long Running")
 async def processors_flow():
     logger = get_run_logger()
     logger.info("Starting processors supervisor")
