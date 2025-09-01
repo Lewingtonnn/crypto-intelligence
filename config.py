@@ -43,3 +43,4 @@ KAFKA_TOPIC_ONCHAIN_RAW = os.getenv("KAFKA_TOPIC_ONCHAIN_RAW", "onchain.raw")
 KAFKA_TOPIC_ONCHAIN_ENRICHED = os.getenv("KAFKA_TOPIC_ONCHAIN_ENRICHED", "onchain.enriched")
 
 # Add other constants here as needed.
+METRICS_PORT_NEWS_INGEST = int(os.getenv("METRICS_PORT_NEWS_INGEST", 9103))

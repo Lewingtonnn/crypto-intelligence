@@ -1,12 +1,8 @@
-
+# anomaly_detector.py
 """
-anomaly_detector.py
-Consumes enriched transactions (or reads from DB) and detects anomalies:
-- uses DB-driven rolling Z-score per from_address
-- stores anomalies to DB (anomalies table)
-- sends Slack alerts (with retries)
-- writes persistent DLQ if storing fails
-- Prometheus metrics + graceful shutdown
+Anomaly detector refactor suitable for:
+- Running as a scheduled Prefect flow (call detect_once)
+- Running standalone as a long-running service (main_loop)
 """
 
 import os
@@ -14,7 +10,6 @@ import json
 import math
 import asyncio
 import logging
-import signal
 from typing import Optional, Dict, Any
 
 import asyncpg
@@ -37,11 +32,11 @@ PROMETHEUS_PORT = int(os.getenv("ANOMALY_PROMETHEUS_PORT", 9107))
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 # Z-score config
-Z_WINDOW = int(os.getenv("Z_WINDOW", 100))     # number of recent tx to use as baseline
-Z_THRESH = float(os.getenv("Z_THRESHOLD", 4.0))  # flag if |z| >= threshold
+Z_WINDOW = int(os.getenv("Z_WINDOW", 100))
+Z_THRESH = float(os.getenv("Z_THRESHOLD", 4.0))
 
 # Operational config
-LOOP_INTERVAL = int(os.getenv("ANOMALY_LOOP_INTERVAL", 10))  # how often to run detection loop
+LOOP_INTERVAL = int(os.getenv("ANOMALY_LOOP_INTERVAL", 10))
 POOL_MIN = int(os.getenv("DB_POOL_MIN", 1))
 POOL_MAX = int(os.getenv("DB_POOL_MAX", 5))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 5))
@@ -54,11 +49,6 @@ ANOMALIES_STORED = Counter("anomalies_stored_total", "Anomalies persisted to DB"
 ANOMALY_DLQ_WRITES = Counter("anomaly_dlq_writes_total", "Anomalies written to DLQ")
 LAST_ANOMALY_ID = Gauge("last_anomaly_id", "Last saved anomaly DB id")
 
-# Globals
-_stop = asyncio.Event()
-pool: asyncpg.pool.Pool | None = None
-
-
 # -----------------------
 # Retry helper
 # -----------------------
@@ -67,6 +57,8 @@ async def retry_with_backoff(coro_fn, retries: int = MAX_RETRIES, base_delay: fl
     while True:
         try:
             return await coro_fn()
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             attempt += 1
             if attempt > retries:
@@ -74,7 +66,6 @@ async def retry_with_backoff(coro_fn, retries: int = MAX_RETRIES, base_delay: fl
             delay = base_delay * (2 ** (attempt - 1))
             logger.warning(f"Transient error (attempt {attempt}/{retries}). Retrying in {delay}s: {e}")
             await asyncio.sleep(delay)
-
 
 # -----------------------
 # Slack notifier
@@ -101,11 +92,10 @@ async def send_slack_alert(payload: Dict[str, Any]):
         SLACK_ALERTS_FAILED.inc()
         logger.error(f"Failed to send Slack alert after retries: {e}")
 
-
 # -----------------------
 # DB helpers: ensure tables + dlq
 # -----------------------
-async def ensure_tables():
+async def ensure_tables(pool: asyncpg.pool.Pool):
     async with pool.acquire() as conn:
         await conn.execute(f"""
             CREATE TABLE IF NOT EXISTS {ANOMALY_TABLE} (
@@ -128,13 +118,10 @@ async def ensure_tables():
                 failed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        # indexes for fast lookups
         await conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{ANOMALY_TABLE}_hash ON {ANOMALY_TABLE} (hash);")
     logger.info("✅ Ensured anomaly tables exist")
 
-
-async def store_anomaly(anom: Dict[str, Any]) -> Optional[int]:
-    """Store anomaly with retries; on permanent failure return None."""
+async def store_anomaly(pool: asyncpg.pool.Pool, anom: Dict[str, Any]) -> Optional[int]:
     async def _do_store():
         async with pool.acquire() as conn:
             anomaly_id = await conn.fetchval(
@@ -163,8 +150,7 @@ async def store_anomaly(anom: Dict[str, Any]) -> Optional[int]:
         logger.error(f"Failed to store anomaly after retries: {e}")
         return None
 
-
-async def write_anomaly_dlq(payload: Dict[str, Any], reason: str):
+async def write_anomaly_dlq(pool: asyncpg.pool.Pool, payload: Dict[str, Any], reason: str):
     try:
         async with pool.acquire() as conn:
             await conn.execute(f"INSERT INTO {DLQ_TABLE} (payload, reason) VALUES ($1, $2)", json.dumps(payload), reason)
@@ -173,15 +159,10 @@ async def write_anomaly_dlq(payload: Dict[str, Any], reason: str):
     except Exception as e:
         logger.critical(f"Failed to write anomaly to DLQ: {e}")
 
-
 # -----------------------
 # Z-score logic (DB-driven baseline)
 # -----------------------
-async def compute_zscore_for_address(from_address: str, value: float, window: int = Z_WINDOW) -> Optional[float]:
-    """
-    Query last `window` values for from_address and compute z-score for `value`.
-    Returns None if not enough baseline or std == 0.
-    """
+async def compute_zscore_for_address(pool: asyncpg.pool.Pool, from_address: str, value: float, window: int = Z_WINDOW) -> Optional[float]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             f"SELECT value FROM {TABLE_NAME} WHERE from_address=$1 AND value IS NOT NULL ORDER BY id DESC LIMIT $2",
@@ -200,19 +181,14 @@ async def compute_zscore_for_address(from_address: str, value: float, window: in
     z = (float(value) - mean) / std
     return z
 
-
 # -----------------------
-# Detection rules & loop
+# Detection single-pass
 # -----------------------
-async def detect_and_alert():
+async def detect_and_handle_once(pool: asyncpg.pool.Pool):
     """
-    Single pass: look at newest transactions and evaluate anomalies.
-    Strategy:
-     - Query recent transactions that are not yet evaluated (here we use latest N rows)
-     - For each tx compute zscore and static checks
-     - Persist anomaly + alert via Slack
+    Single pass detection: fetch recent rows, compute z-scores and static rules,
+    persist anomalies and send alerts.
     """
-    # We'll take last N rows as candidate set to evaluate on each loop.
     CANDIDATE_LIMIT = int(os.getenv("ANOMALY_CANDIDATE_LIMIT", 500))
 
     async with pool.acquire() as conn:
@@ -222,8 +198,10 @@ async def detect_and_alert():
         )
 
     for r in rows:
+        # allow cancellation between items
+        await asyncio.sleep(0)
+
         tx = dict(r)
-        # normalization & guards
         if tx.get("value") is None:
             continue
 
@@ -238,11 +216,17 @@ async def detect_and_alert():
             reasons.append("incomplete_data")
 
         # Z-score rule
-        z = await compute_zscore_for_address(from_addr, value)
+        try:
+            z = await compute_zscore_for_address(pool, from_addr, value)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.exception(f"Error computing z-score for {from_addr}: {e}")
+            z = None
+
         if z is not None and abs(z) >= Z_THRESH:
             reasons.append(f"z_score:{z:.2f}")
 
-        # If any reason flagged -> persist + alert
         if reasons:
             ANOMALIES_FOUND.inc()
             reason_text = ";".join(reasons)
@@ -257,75 +241,77 @@ async def detect_and_alert():
             }
 
             # Persist anomaly
-            anomaly_id = await store_anomaly(anomaly_record)
+            anomaly_id = await store_anomaly(pool, anomaly_record)
             if anomaly_id is None:
-                # store failed after retries -> write DLQ
-                await write_anomaly_dlq(anomaly_record, "store_failed_after_retries")
-            # Fire Slack alert (best-effort with retry)
-            await send_slack_alert(anomaly_record)
-
+                await write_anomaly_dlq(pool, anomaly_record, "store_failed_after_retries")
+            # Fire Slack alert (best-effort)
+            try:
+                await send_slack_alert(anomaly_record)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Slack alert failed (non-fatal)")
 
 # -----------------------
-# Loop + graceful shutdown
+# Public: single-run entry (call this from Prefect)
 # -----------------------
-def _signal_handler():
-    logger.info("Shutdown signal received.")
-    _stop.set()
+async def detect_once():
+    """
+    Creates a short-lived DB pool, ensures tables, runs a single pass, then closes the pool.
+    Use this function in Prefect scheduled flows.
+    """
+    pool = None
+    try:
+        pool = await asyncpg.create_pool(DATABASE_URL, min_size=POOL_MIN, max_size=POOL_MAX)
+        await ensure_tables(pool)
+        await detect_and_handle_once(pool)
+    finally:
+        if pool:
+            await pool.close()
 
+# -----------------------
+# Optional long-running loop (standalone)
+# -----------------------
+_stop = asyncio.Event()
 
 async def main_loop():
-    global pool
+    """
+    Optional long-running loop for local/dev usage. This can be launched as a service.
+    """
     pool = await asyncpg.create_pool(DATABASE_URL, min_size=POOL_MIN, max_size=POOL_MAX)
-    logger.info("Connected to Postgres pool")
-    await ensure_tables()
-
-    while not _stop.is_set():
-        try:
-            await detect_and_alert()
-        except Exception as e:
-            logger.exception(f"Error in detection loop: {e}")
-        try:
-            await asyncio.wait_for(_stop.wait(), timeout=LOOP_INTERVAL)
-        except asyncio.TimeoutError:
-            pass
-
-
-
-# -----------------------
-# Entrypoint
-# -----------------------
-import platform
-
-def main():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    # On Unix, hook signals
-    if platform.system() != "Windows":
-        try:
-            loop.add_signal_handler(signal.SIGINT, _signal_handler)
-            loop.add_signal_handler(signal.SIGTERM, _signal_handler)
-        except NotImplementedError:
-            pass
-    else:
-        # On Windows, rely on KeyboardInterrupt
-        pass
-
     try:
-        # Start Prometheus
-        start_http_server(PROMETHEUS_PORT)
-        logger.info(f"Prometheus server started on port {PROMETHEUS_PORT}")
-
-        # Run detector loop
-        loop.run_until_complete(main_loop())
-
-    except KeyboardInterrupt:
-        logger.info("🛑 Interrupted by user (Ctrl+C)")
+        await ensure_tables(pool)
+        while not _stop.is_set():
+            try:
+                await detect_and_handle_once(pool)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.exception(f"Error in detection loop: {e}")
+            try:
+                await asyncio.wait_for(_stop.wait(), timeout=LOOP_INTERVAL)
+            except asyncio.TimeoutError:
+                pass
     finally:
-        loop.stop()
-        loop.close()
-        logger.info("Event loop closed")
+        await pool.close()
 
+# -----------------------
+# Standalone CLI entry
+# -----------------------
+def run_standalone():
+    """
+    Starts Prometheus and runs the long-running loop. Useful for running outside Prefect.
+    """
+    start_http_server(PROMETHEUS_PORT)
+    logger.info(f"Prometheus server started on port {PROMETHEUS_PORT}")
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main_loop())
+    except KeyboardInterrupt:
+        logger.info("Interrupted, shutting down.")
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
 
 if __name__ == "__main__":
-    main()
+    run_standalone()

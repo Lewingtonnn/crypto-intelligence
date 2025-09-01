@@ -118,41 +118,46 @@ async def consume_and_process():
         log.info('Starting consumer loop.')
 
         # Main Consumption Loop
-        while True:
-            messages = await consumer.getmany(timeout_ms=5000, max_records=BATCH_SIZE)
-            for tp, messages_for_tp in messages.items():
-                for msg in messages_for_tp:
-                    parsed_data = parse_and_validate_message(msg.value)
-                    if parsed_data:
-                        batch.append(parsed_data)
+        try:
 
-            if batch:
-                log.info(f"Batch full ({len(batch)} items), committing to DB...")
-                try:
-                    async with pool.acquire() as conn:
-                        start_time = asyncio.get_event_loop().time()
-                        await conn.executemany("""
-                            INSERT INTO prices (timestamp, id, price, market_cap, market_cap_rank)
-                            VALUES ($1, $2, $3, $4, $5)
-                            ON CONFLICT (timestamp) DO UPDATE SET
-                                id = EXCLUDED.id,
-                                price = EXCLUDED.price,
-                                market_cap = EXCLUDED.market_cap,
-                                market_cap_rank = EXCLUDED.market_cap_rank
-                        """, batch)
-                        end_time = asyncio.get_event_loop().time()
-                        BATCH_LATENCY_SECONDS.set(end_time - start_time)
-                        ROWS_WRITTEN.inc(len(batch))
-                        log.info('Batch written successfully.')
+            while True:
+                messages = await consumer.getmany(timeout_ms=5000, max_records=BATCH_SIZE)
+                for tp, messages_for_tp in messages.items():
+                    for msg in messages_for_tp:
+                        parsed_data = parse_and_validate_message(msg.value)
+                        if parsed_data:
+                            batch.append(parsed_data)
 
-                except asyncpg.exceptions.PostgresError as e:
-                    log.error(f"Failed to write batch to DB: {e}. Skipping batch.")
-                    DB_CONNECTION_STATUS.set(0) # Indicate DB is down
-                    # The loop continues, and we'll re-attempt the DB connection later
-                finally:
-                    batch.clear()
+                if batch:
+                    log.info(f"Batch full ({len(batch)} items), committing to DB...")
+                    try:
+                        async with pool.acquire() as conn:
+                            start_time = asyncio.get_event_loop().time()
+                            await conn.executemany("""
+                                INSERT INTO prices (timestamp, id, price, market_cap, market_cap_rank)
+                                VALUES ($1, $2, $3, $4, $5)
+                                ON CONFLICT (timestamp) DO UPDATE SET
+                                    id = EXCLUDED.id,
+                                    price = EXCLUDED.price,
+                                    market_cap = EXCLUDED.market_cap,
+                                    market_cap_rank = EXCLUDED.market_cap_rank
+                            """, batch)
+                            end_time = asyncio.get_event_loop().time()
+                            BATCH_LATENCY_SECONDS.set(end_time - start_time)
+                            ROWS_WRITTEN.inc(len(batch))
+                            log.info('Batch written successfully.')
 
-            await asyncio.sleep(1) # Prevents busy-waiting
+                    except asyncpg.exceptions.PostgresError as e:
+                        log.error(f"Failed to write batch to DB: {e}. Skipping batch.")
+                        DB_CONNECTION_STATUS.set(0) # Indicate DB is down
+                        # The loop continues, and we'll re-attempt the DB connection later
+                    finally:
+                        batch.clear()
+
+                await asyncio.sleep(1) # Prevents busy-waiting
+        except asyncio.CancelledError:
+            log.info("Consumer loop cancelled, shutting down...")
+            raise
 
     except Exception as e:
         log.critical(f"An unhandled critical error occurred: {e}", exc_info=True)
