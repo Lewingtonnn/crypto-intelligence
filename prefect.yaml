@@ -3,35 +3,43 @@
 # control along with your flow code.
 
 # Generic metadata about this project
-name: Crypto-Intelligence-Pippeline
+name: Crypto-Intelligence-Pipeline
 prefect-version: 3.4.15
-
-# build section allows you to manage and build docker images
-build: null
-
-# push section allows you to manage if and how this project is uploaded to remote locations
-push: null
-
-# pull section allows you to provide instructions for cloning this project in remote locations
-pull:
-- prefect.deployments.steps.git_clone:
-    repository: https://github.com/Lewingtonnn/crypto-intelligence.git
-    branch: master
 
 # the deployments section allows you to provide configuration for deploying flows
 deployments:
-- name: producers-supervisor
-  version: null
-  tags: []
-  concurrency_limit: null
-  description: |-
-    Run all producers (infinite loops) as a single supervisor flow.
-    Each underlying function must be an async function that either loops forever,
-    or we re-run it in a loop here.
-  entrypoint: flow/producers_flows.py:producers_flow
-  parameters: {}
-  work_pool:
-    name: default-agent-pool
-    work_queue_name: null
-    job_variables: {}
-  schedules: []
+  # This deployment will run the continuous streaming services.
+  - name: continuous-services
+    version: null
+    tags: ["continuous", "production"]
+    description: "Deploys the continuous producer, storer, and processor flows."
+    entrypoint: flows/main_orchestrator.py:master_orchestrator
+    work_pool:
+      name: default-agent-pool
+      work_queue_name: null
+    schedule:
+      interval: 300 # Run every 300 seconds (5 minutes)
+
+  # This deployment will handle the scheduled batch jobs, like materialized view refreshes.
+  - name: materialized-views-refresh
+    version: null
+    tags: ["batch", "analytics"]
+    description: "Refreshes materialized views on a schedule."
+    entrypoint: flows/materialized_views_flow.py:refresh_materialized_views_flow
+    work_pool:
+      name: default-agent-pool
+      work_queue_name: null
+    schedule:
+      interval: 900 # Run every 900 seconds (15 minutes)
+
+  # This deployment will handle the anomaly detection job on a separate schedule.
+  - name: anomaly-detection
+    version: null
+    tags: ["batch", "alerts"]
+    description: "Runs the anomaly detection job on a schedule."
+    entrypoint: flows/anomaly_flow.py:anomaly_detection_flow
+    work_pool:
+      name: default-agent-pool
+      work_queue_name: null
+    schedule:
+      interval: 900 # Run every 900 seconds (15 minutes)

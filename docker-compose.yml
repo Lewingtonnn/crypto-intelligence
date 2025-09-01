@@ -15,7 +15,7 @@ services:
     hostname: kafka
     ports:
       - "9092:9092"
-      - "9101:9101" # Only Kafka's own JMX metrics port should be exposed, if needed
+      - "9101:9101"
     depends_on:
       - zookeeper
     environment:
@@ -27,7 +27,6 @@ services:
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
 
-  # 1. PostgreSQL Database
   postgres:
     image: postgres:15.3-alpine
     container_name: postgres
@@ -41,10 +40,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data/
 
-  # 2. Prometheus
   prometheus:
     image: prom/prometheus:v2.45.0
-    container_name: prometheus2
+    container_name: prometheus
     hostname: prometheus
     ports:
       - "9090:9090"
@@ -56,10 +54,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
     depends_on:
       - kafka
-      - producer
-      - consumer
 
-  # 3. Grafana
   grafana:
     image: grafana/grafana:10.0.3
     container_name: grafana-crypto
@@ -74,123 +69,34 @@ services:
       - ./provisioning/datasource:/etc/grafana/provisioning/datasource
     depends_on:
       - prometheus
-      - producer
-      - consumer
 
-  producer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: producer
-    hostname: producer
-    environment:
-      - KAFKA_SERVERS=kafka:29092
-    depends_on:
-      - kafka
+  prefect-server:
+    image: prefecthq/prefect:2-python3.11
+    container_name: prefect-server
+    hostname: prefect-server
+    ports:
+      - "4200:4200"
+    command: prefect server start
+    restart: always
 
-  consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: consumer
-    hostname: consumer
-    environment:
-      - KAFKA_SERVERS=kafka:29092
-    depends_on:
-      - kafka
-      - postgres
-
-  news-ingest:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: news-ingest
-    hostname: news-ingest
-    environment:
-      - KAFKA_SERVERS=kafka:29092
-    depends_on:
-      - kafka
-
-  sentiment-scorer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: sentiment-scorer
-    hostname: sentiment-scorer
-    environment:
-      - KAFKA_SERVERS=kafka:29092
-    depends_on:
-      - kafka
-
-  sentiment-to-db:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: sentiment-to-db
-    hostname: sentiment-to-db
-    environment:
-      - KAFKA_SERVERS=kafka:29092
-    depends_on:
-      - kafka
-      - postgres
-
-  ingest-onchain:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ingest-onchain
-    hostname: ingest-onchain
-    environment:
-      - KAFKA_SERVERS=kafka:29092
-    depends_on:
-      - kafka
-  
-  onchain-consumer-to-db:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: onchain-consumer-to-db
-    hostname: onchain-consumer-to-db
-    environment:
-      - KAFKA_SERVERS=kafka:29092
-    depends_on:
-      - kafka
-      - postgres
-
-  anomaly-detector:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: anomaly-detector
-    hostname: anomaly-detector
-    environment:
-      - KAFKA_SERVERS=kafka:29092
-    depends_on:
-      - kafka
-      - postgres
-
-  # This is the new service to run your Prefect flow
+  # The Prefect agent is your ONE application container
   prefect-agent:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: prefect-agent
     hostname: prefect-agent
-    command: >
-      /bin/sh -c "prefect flow-run create --name 'crypto-data-pipeline-flow' --param 'my-param=value'"
+    command: prefect worker start --pool default-agent-pool
     volumes:
       - .:/app
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200
+      - KAFKA_SERVERS=kafka:29092
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     depends_on:
+      - prefect-server
       - kafka
       - postgres
-      - producer
-      - consumer
-      - news-ingest
-      - sentiment-scorer
-      - sentiment-to-db
-      - ingest-onchain
-      - onchain-consumer-to-db
-      - anomaly-detector
     restart: always
 
 volumes:
