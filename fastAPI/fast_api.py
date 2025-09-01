@@ -20,18 +20,16 @@ logger = logging.getLogger(__name__)
 
 # --- Environment Variables ---
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 API_PROMETHEUS_PORT = int(os.getenv("API_PROMETHEUS_PORT", 9108))
 
 
 # --- Pydantic Data Models ---
-# Pydantic models define the schema for your API's input and output.
-# This ensures data is structured and validated, a critical best practice.
 
 class CryptoPrice(BaseModel):
     """Data model for a single crypto price record."""
-    coin_id: str = Field(..., description="Unique ID of the cryptocurrency (e.g., 'bitcoin').")
-    symbol: str = Field(..., description="Trading symbol of the cryptocurrency (e.g., 'btc').")
-    current_price: float = Field(..., description="Current price in USD.")
+    id: str = Field(..., description="Unique ID of the cryptocurrency (e.g., 'bitcoin').")
+    price: float = Field(..., description="Current price in USD.")
     market_cap: int = Field(..., description="Market capitalization.")
     market_cap_rank: int = Field(..., description="Market capitalization rank.")
     timestamp: datetime = Field(..., description="Timestamp of the data point.")
@@ -47,16 +45,29 @@ class NewsSentiment(BaseModel):
 
 class OnchainAnomaly(BaseModel):
     """Data model for a single on-chain anomaly record."""
-    tx_hash: str = Field(..., description="Transaction hash.")
+    id : int = Field(..., description="Unique ID of the anomaly record.")
+    type : str = Field()
     from_address: str = Field(..., description="Address of the sender.")
     to_address: str = Field(..., description="Address of the receiver.")
-    value_eth: float = Field(..., description="Transaction value in ETH.")
+    value: float = Field()
+    hash: str = Field(..., description="Transaction hash.")
+    block_number: str = Field()
+    reason : str = Field(..., description=" Reason for anomaly")
+    detected_at: datetime = Field(..., description="Time when anomaly was detected.")
+
+class OnchainData(BaseModel):
+    """Onchain data model."""
+    id : int = Field(..., description="Unique ID of the onchain record.")
+    type : str = Field(..., description="Type of the onchain data.")
+    from_address: str = Field(..., description="Address of the sender.")
+    to_address: str = Field(..., description="Address of the receiver.")
+    value: float = Field(..., description="Value transferred.")
+    hash: str = Field(..., description="Transaction hash.")
+    block_number: str = Field(..., description="Block number of the transaction.")
     timestamp: datetime = Field(..., description="Timestamp of the transaction.")
 
 
 # --- FastAPI Lifespan Events ---
-# This is an essential pattern for managing resources like database connections.
-# The connection pool is created when the app starts and is gracefully closed when it shuts down.
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,29 +86,26 @@ async def lifespan(app: FastAPI):
 
 
 # --- API Instance ---
-# The main application object
 app = FastAPI(
     title="Crypto Intelligence API",
-    description="A real-time API for crypto market data, news sentiment, and on-chain anomalies."
+    description="A real-time API for crypto market data, news sentiment, and on-chain anomalies.",
+    lifespan=lifespan
 )
 
 
 # --- API Endpoints ---
-# Each endpoint serves a specific purpose, returning data from your pipelines.
-
-@app.get("/api/v1/crypto/prices", response_model=List[CryptoPrice])
+@app.get("/api/v1/crypto/prices", response_model=List[CryptoPrice], tags=["Market Data"])
 async def get_prices():
     """Retrieves the latest 10 crypto price records."""
     query = """
     SELECT
-        coin_id,
-        symbol,
-        current_price,
+        id,
+        price,
         market_cap,
         market_cap_rank,
         timestamp
     FROM
-        market_data
+        prices
     ORDER BY
         timestamp DESC
     LIMIT 10;
@@ -105,11 +113,10 @@ async def get_prices():
     async with pool.acquire() as conn:
         records = await conn.fetch(query)
 
-    # convert the records to the Pydantic model
     return [CryptoPrice(**r) for r in records]
 
 
-@app.get("/api/v1/news/sentiment", response_model=List[NewsSentiment])
+@app.get("/api/v1/news/sentiment", response_model=List[NewsSentiment], tags=["News Sentiment"])
 async def get_sentiment():
     """Retrieves the latest 10 news sentiment records."""
     query = """
@@ -130,18 +137,20 @@ async def get_sentiment():
     return [NewsSentiment(**r) for r in records]
 
 
-@app.get("/api/v1/onchain/anomalies", response_model=List[OnchainAnomaly])
+@app.get("/api/v1/onchain/anomalies", response_model=List[OnchainAnomaly], tags=["On-chain Analytics"])
 async def get_anomalies():
     """Retrieves the latest 10 on-chain anomaly records."""
-    # This assumes a table named 'onchain_anomalies' exists,
-    # created by your anomaly_detector.py script.
     query = """
     SELECT
-        tx_hash,
+        id,
+        type,
         from_address,
         to_address,
-        value_eth,
-        timestamp
+        value,
+        hash,
+        block_number,
+        reason,
+        detected_at
     FROM
         onchain_anomalies
     ORDER BY
@@ -152,6 +161,30 @@ async def get_anomalies():
         records = await conn.fetch(query)
 
     return [OnchainAnomaly(**r) for r in records]
+
+@app.get("/api/v1/onchain/data", response_model=List[OnchainData], tags=["On-chain Analytics"])
+async def get_onchain_data():
+    """Retrieves the latest 10 on-chain data records."""
+    query = """
+    SELECT
+        id,
+        type,
+        from_address,
+        to_address,
+        value,
+        hash,
+        block_number,
+        timestamp
+    FROM
+        onchain_data
+    ORDER BY
+        timestamp DESC
+    LIMIT 10;
+    """
+    async with pool.acquire() as conn:
+        records = await conn.fetch(query)
+
+    return [OnchainData(**r) for r in records]
 
 
 # --- Main Entrypoint ---

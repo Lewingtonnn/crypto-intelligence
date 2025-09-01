@@ -1,36 +1,44 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
 scrape_configs:
   - job_name: 'crypto-producer'
     static_configs:
-      - targets: ['host.docker.internal:9101']
+      - targets: ['crypto-producer:9101']
 
-  - job_name: 'crypto-consumer'
+  - job_name: 'crypto-consumer-db'
     static_configs:
-      - targets: ['host.docker.internal:9102']
+      - targets: ['crypto-consumer-db:9102']
 
   - job_name: 'news-ingest'
     static_configs:
-      - targets: ['host.docker.internal:9103']
+      - targets: ['news-ingest:9103']
 
-  - job_name: 'sentiment_analysis'
+  - job_name: 'sentiment-scorer'
     static_configs:
-      - targets: ['host.docker.internal:9104']
+      - targets: ['sentiment-scorer:9104']
 
-  - job_name: 'score-and-join'
+  - job_name: 'sentiment-db'
     static_configs:
-      - targets: ['host.docker.internal:9105']
+      - targets: ['sentiment-db:9105']
 
-  - job_name: 'ingest_onchain'
+  - job_name: 'onchain-ingest'
     static_configs:
-      - targets: ['host.docker.internal:9106']
+      - targets: ['onchain-ingest:9106']
 
-  - job_name: 'anomaly_detection'
+  - job_name: 'onchain-parser'
     static_configs:
-      - targets: ['host.docker.internal:9107']
+      - targets: ['onchain-parser:9107']
 
-  - job_name: 'onchain_consumer_to_db'
+  - job_name: 'onchain-consumer-db'
     static_configs:
-      - targets: ['host.docker.internal:9108']
+      - targets: ['onchain-consumer-db:9108']
 
-  - job_name: 'sentiment_to_db'
+  - job_name: 'anomaly-detector'
     static_configs:
-      - targets: [host.docker.internal:9109']
+      - targets: ['anomaly-detector:9109']
+
+  - job_name: 'fast-api-service'
+    static_configs:
+      - targets: ['fast-api-service:9110']
