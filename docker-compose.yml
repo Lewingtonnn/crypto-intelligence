@@ -1,4 +1,3 @@
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.1
@@ -16,6 +15,7 @@ services:
     hostname: kafka
     ports:
       - "9092:9092"
+      - "9101:9101" # Only Kafka's own JMX metrics port should be exposed, if needed
     depends_on:
       - zookeeper
     environment:
@@ -25,9 +25,11 @@ services:
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
 
+  # 1. PostgreSQL Database
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.3-alpine
     container_name: postgres
     hostname: postgres
     ports:
@@ -39,144 +41,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data/
 
-  # 1. Crypto Market Data Producer
-  crypto-producer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: crypto-producer
-    hostname: crypto-producer
-    command: python ingest/producer.py
-    depends_on:
-      - kafka
-    ports:
-      - "9101:9101"
-
-  # 2. Crypto Market Data Consumer to DB
-  crypto-consumer-db:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: crypto-consumer-db
-    hostname: crypto-consumer-db
-    command: python ingest/consumer_to_db.py
-    depends_on:
-      - kafka
-      - postgres
-    ports:
-      - "9102:9102"
-
-  # 3. News Ingest
-  news-ingest:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: news-ingest
-    hostname: news-ingest
-    command: python sentiment/news_ingest.py
-    depends_on:
-      - kafka
-    ports:
-      - "9103:9103"
-
-  # 4. Sentiment Scorer
-  sentiment-scorer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: sentiment-scorer
-    hostname: sentiment-scorer
-    command: python sentiment/score_and_join_async.py
-    depends_on:
-      - kafka
-    ports:
-      - "9104:9104"
-
-  # 5. Sentiment Consumer to DB
-  sentiment-db:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: sentiment-db
-    hostname: sentiment-db
-    command: python sentiment/sentiment_to_db.py
-    depends_on:
-      - kafka
-      - postgres
-    ports:
-      - "9105:9105"
-
-  # 6. On-chain Ingest
-  onchain-ingest:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: onchain-ingest
-    hostname: onchain-ingest
-    command: python onchain/ingest_onchain.py
-    depends_on:
-      - kafka
-    ports:
-      - "9106:9106"
-
-  # 7. On-chain Parser/Enrichment
-  onchain-parser:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: onchain-parser
-    hostname: onchain-parser
-    command: python onchain/parse.py
-    depends_on:
-      - kafka
-    ports:
-      - "9107:9107"
-
-  # 8. On-chain Consumer to DB
-  onchain-consumer-db:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: onchain-consumer-db
-    hostname: onchain-consumer-db
-    command: python onchain/onchain_consumer_to_db.py
-    depends_on:
-      - kafka
-      - postgres
-    ports:
-      - "9108:9108"
-
-  # 9. Anomaly Detector
-  anomaly-detector:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: anomaly-detector
-    hostname: anomaly-detector
-    command: python onchain/anomaly_detector.py
-    depends_on:
-      - postgres
-    ports:
-      - "9109:9109"
-
-  # 10. FastAPI Service
-  fast-api-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: fast-api-service
-    hostname: fast-api-service
-    command: python fastAPI/fast_api.py
-    depends_on:
-      - postgres
-    ports:
-      - "8000:8000"
-      - "9110:9110"
-
-  # 11. Prometheus
+  # 2. Prometheus
   prometheus:
     image: prom/prometheus:v2.45.0
-    container_name: prometheus
+    container_name: prometheus2
     hostname: prometheus
     ports:
       - "9090:9090"
@@ -187,18 +55,11 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
     depends_on:
-      - crypto-producer
-      - crypto-consumer-db
-      - news-ingest
-      - sentiment-scorer
-      - sentiment-db
-      - onchain-ingest
-      - onchain-parser
-      - onchain-consumer-db
-      - anomaly-detector
-      - fast-api-service
+      - kafka
+      - producer
+      - consumer
 
-  # 12. Grafana
+  # 3. Grafana
   grafana:
     image: grafana/grafana:10.0.3
     container_name: grafana-crypto
@@ -213,6 +74,124 @@ services:
       - ./provisioning/datasource:/etc/grafana/provisioning/datasource
     depends_on:
       - prometheus
+      - producer
+      - consumer
+
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: producer
+    hostname: producer
+    environment:
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: consumer
+    hostname: consumer
+    environment:
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+      - postgres
+
+  news-ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: news-ingest
+    hostname: news-ingest
+    environment:
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+
+  sentiment-scorer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentiment-scorer
+    hostname: sentiment-scorer
+    environment:
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+
+  sentiment-to-db:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentiment-to-db
+    hostname: sentiment-to-db
+    environment:
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+      - postgres
+
+  ingest-onchain:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ingest-onchain
+    hostname: ingest-onchain
+    environment:
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+  
+  onchain-consumer-to-db:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: onchain-consumer-to-db
+    hostname: onchain-consumer-to-db
+    environment:
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+      - postgres
+
+  anomaly-detector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: anomaly-detector
+    hostname: anomaly-detector
+    environment:
+      - KAFKA_SERVERS=kafka:29092
+    depends_on:
+      - kafka
+      - postgres
+
+  # This is the new service to run your Prefect flow
+  prefect-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prefect-agent
+    hostname: prefect-agent
+    command: >
+      /bin/sh -c "prefect flow-run create --name 'crypto-data-pipeline-flow' --param 'my-param=value'"
+    volumes:
+      - .:/app
+    depends_on:
+      - kafka
+      - postgres
+      - producer
+      - consumer
+      - news-ingest
+      - sentiment-scorer
+      - sentiment-to-db
+      - ingest-onchain
+      - onchain-consumer-to-db
+      - anomaly-detector
+    restart: always
 
 volumes:
   postgres_data:
