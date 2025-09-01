@@ -39,7 +39,7 @@ GROUP_ID = os.getenv("GROUP_ID", "onchain-to-db-group")
 DATABASE_URL = os.getenv("DATABASE_URL")
 TABLE_NAME = os.getenv("TABLE_NAME", "onchain_data")
 DLQ_TABLE = os.getenv("DLQ_TABLE", "onchain_dlq")
-PROMETHEUS_PORT = int(os.getenv("PROMETHEUS_PORT", 9110))
+PROMETHEUS_PORT = int(os.getenv("PROMETHEUS_PORT", 9108))
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", 100))
 BATCH_INTERVAL = int(os.getenv("BATCH_INTERVAL", 5))
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 5))
@@ -249,20 +249,40 @@ def _signal_handler():
     _stop.set()
 
 
-def main():
-    start_http_server(PROMETHEUS_PORT)
-    logger.info(f"Prometheus server started on port {PROMETHEUS_PORT}")
+# -----------------------
+# Entrypoint
+# -----------------------
+import platform
 
-    loop = asyncio.get_event_loop()
-    loop.add_signal_handler(signal.SIGINT, _signal_handler)
-    loop.add_signal_handler(signal.SIGTERM, _signal_handler)
+def main():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # On Unix, hook signals
+    if platform.system() != "Windows":
+        try:
+            loop.add_signal_handler(signal.SIGINT, _signal_handler)
+            loop.add_signal_handler(signal.SIGTERM, _signal_handler)
+        except NotImplementedError:
+            pass
+    else:
+        # On Windows, rely on KeyboardInterrupt
+        pass
 
     try:
+        # Start Prometheus
+        start_http_server(PROMETHEUS_PORT)
+        logger.info(f"Prometheus server started on port {PROMETHEUS_PORT}")
+
+        # Run detector loop
         loop.run_until_complete(consume_and_store())
+
+    except KeyboardInterrupt:
+        logger.info("🛑 Interrupted by user (Ctrl+C)")
     finally:
-        loop.run_until_complete(asyncio.sleep(0.1))
+        loop.stop()
         loop.close()
-        logger.info("Exited.")
+        logger.info("Event loop closed")
 
 
 if __name__ == "__main__":

@@ -33,7 +33,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 TABLE_NAME = os.getenv("TABLE_NAME", "onchain_data")
 ANOMALY_TABLE = os.getenv("ANOMALY_TABLE", "onchain_anomalies")
 DLQ_TABLE = os.getenv("ANOMALY_DLQ_TABLE", "anomaly_dlq")
-PROMETHEUS_PORT = int(os.getenv("ANOMALY_PROMETHEUS_PORT", 9111))
+PROMETHEUS_PORT = int(os.getenv("ANOMALY_PROMETHEUS_PORT", 9107))
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 # Z-score config
@@ -284,25 +284,47 @@ async def main_loop():
             await detect_and_alert()
         except Exception as e:
             logger.exception(f"Error in detection loop: {e}")
-        await asyncio.wait([_stop.wait()], timeout=LOOP_INTERVAL)
+        try:
+            await asyncio.wait_for(_stop.wait(), timeout=LOOP_INTERVAL)
+        except asyncio.TimeoutError:
+            pass
 
+
+
+# -----------------------
+# Entrypoint
+# -----------------------
+import platform
 
 def main():
-    start_http_server(PROMETHEUS_PORT)
-    logger.info(f"Prometheus server started on port {PROMETHEUS_PORT}")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    loop = asyncio.get_event_loop()
-    loop.add_signal_handler(signal.SIGINT, _signal_handler)
-    loop.add_signal_handler(signal.SIGTERM, _signal_handler)
+    # On Unix, hook signals
+    if platform.system() != "Windows":
+        try:
+            loop.add_signal_handler(signal.SIGINT, _signal_handler)
+            loop.add_signal_handler(signal.SIGTERM, _signal_handler)
+        except NotImplementedError:
+            pass
+    else:
+        # On Windows, rely on KeyboardInterrupt
+        pass
 
     try:
+        # Start Prometheus
+        start_http_server(PROMETHEUS_PORT)
+        logger.info(f"Prometheus server started on port {PROMETHEUS_PORT}")
+
+        # Run detector loop
         loop.run_until_complete(main_loop())
+
+    except KeyboardInterrupt:
+        logger.info("🛑 Interrupted by user (Ctrl+C)")
     finally:
-        if pool:
-            loop.run_until_complete(pool.close())
-        loop.run_until_complete(asyncio.sleep(0.1))
+        loop.stop()
         loop.close()
-        logger.info("Anomaly detector shutdown complete.")
+        logger.info("Event loop closed")
 
 
 if __name__ == "__main__":

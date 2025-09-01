@@ -22,7 +22,7 @@ BATCH_SIZE = int(os.getenv('BATCH_SIZE', 20))
 KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'news.scored')
 DATABASE_URL = os.getenv('DATABASE_URL')
 KAFKA_SERVERS = os.getenv('KAFKA_SERVERS', 'localhost:9092')
-PROMETHEUS_PORT = int(os.getenv('PROMETHEUS_PORT', 9106))
+PROMETHEUS_PORT = int(os.getenv('PROMETHEUS_PORT', 9104))
 
 # --- Database Schema Management ---
 async def create_sentiment_tables(conn):
