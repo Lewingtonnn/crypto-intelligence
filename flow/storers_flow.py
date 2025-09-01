@@ -2,9 +2,8 @@
 from prefect import flow, get_run_logger
 import asyncio, signal
 
-logger = get_run_logger()
-
 async def _cancel_all_tasks():
+    logger = get_run_logger()
     logger.info("Shutting down gracefully for storers...")
 
 def _install_sigterm_cancel(loop):
@@ -13,9 +12,7 @@ def _install_sigterm_cancel(loop):
 
 @flow(name="Storers - Long Running (Consumers -> DB)")
 async def storers_flow():
-    """
-    Run DB sink consumers as long-running tasks.
-    """
+    logger = get_run_logger()
     logger.info("Starting storers supervisor")
 
     from ingest.consumer_to_db import consume_and_process as prices_consumer

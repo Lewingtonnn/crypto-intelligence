@@ -2,9 +2,8 @@
 from prefect import flow, get_run_logger
 import asyncio, signal
 
-logger = get_run_logger()
-
 async def _cancel_all_tasks():
+    logger = get_run_logger()
     logger.info("Shutting down gracefully for processors...")
 
 def _install_sigterm_cancel(loop):
@@ -13,9 +12,7 @@ def _install_sigterm_cancel(loop):
 
 @flow(name="Processors (Enrich & Score) - Long Running")
 async def processors_flow():
-    """
-    Long-running processors: consume from topics, transform, produce to other topics.
-    """
+    logger = get_run_logger()
     logger.info("Starting processors supervisor")
 
     from onchain.parse import enrich_onchain_data
