@@ -86,17 +86,17 @@ services:
       dockerfile: Dockerfile
     container_name: prefect-agent
     hostname: prefect-agent
-    command: prefect worker start --pool default-agent-pool
+    command: sh -c "sleep 10 && prefect worker start --pool default-agent-pool"
     volumes:
       - .:/app
     environment:
       - PREFECT_API_URL=http://prefect-server:4200
-      - KAFKA_SERVERS=kafka:29092
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     depends_on:
       - prefect-server
       - kafka
       - postgres
+
+
     restart: always
 
 volumes:
