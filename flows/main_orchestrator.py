@@ -8,7 +8,7 @@ from producers_flows import producers_flow
 from storers_flow import storers_flow
 from processors_flow import processors_flow
 from anomaly_flow import anomaly_detection_flow
-from materialized_views_flow import refresh_materialized_views_flow # You must create this
+# from materialized_views_flow import refresh_materialized_views_flow # You must create this
 
 @flow(name="Crypto Intelligence Pipeline - Master Orchestrator")
 def master_orchestrator():
@@ -48,15 +48,15 @@ continuous_deployment = Deployment.build_from_flow(
     description="Deploys the continuous producer, storer, and processor flows.",
 )
 
-# Deployment for the batch analytics/alerts. This is where you connect the dependencies.
-# This assumes you create a materialized_views_flow that triggers the anomaly_detection_flow
-batch_analytics_deployment = Deployment.build_from_flow(
-    flow=refresh_materialized_views_flow,
-    name="batch-analytics-and-alerts",
-    tags=["batch", "analytics"],
-    schedule=(IntervalSchedule(interval=timedelta(minutes=15))),
-    description="Deploys the batched materialized view refreshes and anomaly detection."
-)
+# # Deployment for the batch analytics/alerts. This is where you connect the dependencies.
+# # This assumes you create a materialized_views_flow that triggers the anomaly_detection_flow
+# batch_analytics_deployment = Deployment.build_from_flow(
+#     flow=refresh_materialized_views_flow,
+#     name="batch-analytics-and-alerts",
+#     tags=["batch", "analytics"],
+#     schedule=(IntervalSchedule(interval=timedelta(minutes=15))),
+#     description="Deploys the batched materialized view refreshes and anomaly detection."
+# )
 
 if __name__ == "__main__":
-    serve(continuous_deployment, batch_analytics_deployment)
+    serve(continuous_deployment)
