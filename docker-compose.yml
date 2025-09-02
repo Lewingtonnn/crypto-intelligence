@@ -86,6 +86,7 @@ services:
       - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
       - PREFECT_SERVER_API_HOST=0.0.0.0
       - PREFECT_SERVER_API_PORT=4200
+      - PREFECT_UI_API_URL=http://127.0.0.1:4200/api
     command: prefect server start --host 0.0.0.0
     depends_on:
       postgres:
@@ -106,6 +107,8 @@ services:
       - prefect-server
       - kafka
     restart: always
+    volumes:
+      - .:/app
 
 volumes:
   prometheus_data:
