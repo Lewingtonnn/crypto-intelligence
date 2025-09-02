@@ -39,6 +39,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data/
+    restart: always
 
   prometheus:
     image: prom/prometheus:v2.45.0
@@ -71,32 +72,33 @@ services:
       - prometheus
 
   prefect-server:
-    image: prefecthq/prefect:2-python3.11
+    # Use the custom-built image
+    build:
+      context: .
+      dockerfile: Dockerfile.prefect-server
     container_name: prefect-server
     hostname: prefect-server
     ports:
       - "4200:4200"
-    command: prefect server start
-    restart: always
+    environment:
+      - PREFECT_API_DATABASE_CONNECTION_URL=${DATABASE_URL}
+    command: wait-for-it.sh postgres:5432 -- prefect server start
+    depends_on:
+      - postgres
 
-  # The Prefect agent is your ONE application container
   prefect-agent:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: prefect-agent
     hostname: prefect-agent
-    command: sh -c "sleep 10 && prefect worker start --pool default-agent-pool"
-    volumes:
-      - .:/app
+    command: wait-for-t.sh prefect-server:4200 --wait-for-it.sh kafka:9092 -- wait-for-it.sh postgres:5432 -- prefect worker start --pool default-agent-pool
     environment:
-      - PREFECT_API_URL=http://prefect-server:4200
+      - PREFECT_API_URL=http://prefect-server:4200/api
     depends_on:
       - prefect-server
       - kafka
       - postgres
-
-
     restart: always
 
 volumes:

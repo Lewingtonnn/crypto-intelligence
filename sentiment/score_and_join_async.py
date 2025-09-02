@@ -33,7 +33,7 @@ async def score_news():
             bootstrap_servers=KAFKA_SERVERS,
             group_id="sentiment-scorer-group",
             auto_offset_reset="earliest",
-            value_deserializer=lambda v: json.loads(v.decode("utf-8")),  # ✅ decode once
+            value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         )
         producer = AIOKafkaProducer(
             bootstrap_servers=KAFKA_SERVERS,
