@@ -16,9 +16,9 @@ def master_orchestrator():
     # Kick off the long-running producer, storer, and processor flows.
     # We don't wait for them, as they are continuous services.
     logger.info("Starting continuous data ingestion and processing services.")
-    producers_flow.submit()
-    storers_flow.submit()
-    processors_flow.submit()
+    producers_flow()
+    storers_flow()
+    processors_flow()
     logger.info("Data ingestion and processing services started.")
 
     # Schedule the batch jobs.
