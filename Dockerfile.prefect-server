@@ -1,3 +1,7 @@
-FROM prefecthq/prefect:2-python3.11
+FROM python:3.11-slim
 
-RUN pip install --no-cache-dir "asyncpg<1.0.0" "SQLAlchemy[asyncio]<2.0.0"
+RUN pip install prefect[server] asyncpg aiosqlite
+
+EXPOSE 4200
+
+CMD ["prefect", "server", "start", "--host", "0.0.0.0"]

@@ -9,6 +9,23 @@ services:
       - ZOOKEEPER_CLIENT_PORT=2181
       - ZOOKEEPER_TICK_TIME=2000
 
+  postgres:
+    image: postgres:15
+    container_name: prefect-postgres
+    hostname: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=prefect
+      - POSTGRES_PASSWORD=prefect
+      - POSTGRES_DB=prefect
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U prefect" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   kafka:
     image: confluentinc/cp-kafka:7.5.1
     container_name: kafka
@@ -26,20 +43,6 @@ services:
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-
-  postgres:
-    image: postgres:15.3-alpine
-    container_name: postgres
-    hostname: postgres
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    restart: always
 
   prometheus:
     image: prom/prometheus:v2.45.0
@@ -72,7 +75,6 @@ services:
       - prometheus
 
   prefect-server:
-    # Use the custom-built image
     build:
       context: .
       dockerfile: Dockerfile.prefect-server
@@ -81,10 +83,15 @@ services:
     ports:
       - "4200:4200"
     environment:
-      - PREFECT_API_DATABASE_CONNECTION_URL=${DATABASE_URL}
-    command: wait-for-it.sh postgres:5432 -- prefect server start
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_SERVER_API_PORT=4200
+    command: prefect server start --host 0.0.0.0
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
 
   prefect-agent:
     build:
@@ -92,16 +99,15 @@ services:
       dockerfile: Dockerfile
     container_name: prefect-agent
     hostname: prefect-agent
-    command: wait-for-t.sh prefect-server:4200 --wait-for-it.sh kafka:9092 -- wait-for-it.sh postgres:5432 -- prefect worker start --pool default-agent-pool
+    command: sh -c "wait-for-it.sh prefect-server:4200 -- prefect worker start --pool default-agent-pool"
     environment:
       - PREFECT_API_URL=http://prefect-server:4200/api
     depends_on:
       - prefect-server
       - kafka
-      - postgres
     restart: always
 
 volumes:
-  postgres_data:
   prometheus_data:
   grafana_data:
+  postgres_data:
