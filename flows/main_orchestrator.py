@@ -1,33 +1,28 @@
 from prefect import flow, get_run_logger
-import asyncio
+from prefect.client.orchestration import get_client
 
-# Import your existing flows as sub-flows
 from producers_flows import producers_flow
 from storers_flow import storers_flow
 from processors_flow import processors_flow
 from anomaly_flow import anomaly_detection_flow
 
-
-# from materialized_views_flow import refresh_materialized_views_flow # You must create this
-
 @flow(name="Crypto Intelligence Pipeline - Master Orchestrator")
-def master_orchestrator():
-    """
-    Main orchestration flow for the Crypto Intelligence Pipeline.
-    This flow serves as the single point of control, ensuring all
-    sub-pipelines run in the correct, managed state.
-    """
+async def master_orchestrator():
     logger = get_run_logger()
+    client = get_client()
 
-    # Kick off the long-running producer, storer, and processor flows.
-    # We submit them so they run as separate flows for visibility and isolation.
-    logger.info("Starting continuous data ingestion and processing services.")
+    logger.info("Starting continuous services...")
 
-    # Correctly submit the sub-flows as separate runs for visibility
-    producers_flow.submit()
-    storers_flow.submit()
-    processors_flow.submit()
+    # Start long-running flows
+    prod = await producers_flow.submit()
+    stor = await storers_flow.submit()
+    proc = await processors_flow.submit()
 
-    # Schedule the batch jobs.
-    # This is a placeholder for your refresh logic.
-    logger.info("Scheduling materialized view refresh and batch anomaly detection.")
+    # Run anomaly detection as a batch job
+    await anomaly_detection_flow.submit()
+
+    # Monitor + restart if needed
+    async for flow_run in client.stream_flow_run_logs(prod.id):
+        if "FAILED" in flow_run.message:
+            logger.error("Producer flow failed. Restarting...")
+            await producers_flow.submit()
