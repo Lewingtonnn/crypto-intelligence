@@ -163,16 +163,17 @@ flowchart TB
 
 Real-time workflow monitoring with retries, schedules, and status updates.
 
+![Prefect Screenshot](images/Screenshot (139).png)
 
-### 2️⃣ Grafana Dashboards
+### 2️⃣ Prometheus targets  Dashboards
 
-Metrics, anomalies, and streaming data visualized.
-
+![Prometheus Screenshot](images/Screenshot (129).png)
 
 ### 3️⃣ FastAPI Docs
 
 Interactive REST API endpoints for querying processed data.
 
+![FastAPI Screenshot](images/Screenshot (138).png)
 
 ## 📂 Project Structure
 
