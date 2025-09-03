@@ -163,17 +163,18 @@ flowchart TB
 
 Real-time workflow monitoring with retries, schedules, and status updates.
 
-![Prefect Screenshot](images/Screenshot (139).png)
+![Prefect screenshot](images/Screenshot%20(139).png)
 
 ### 2️⃣ Prometheus targets  Dashboards
 
-![Prometheus Screenshot](images/Screenshot (129).png)
+![Prometheus screenshot](images/Screenshot%20(129).png)
 
 ### 3️⃣ FastAPI Docs
 
 Interactive REST API endpoints for querying processed data.
 
-![FastAPI Screenshot](images/Screenshot (138).png)
+![FastAPI screenshot](images/Screenshot%20(139).png)
+
 
 ## 📂 Project Structure
 
