@@ -1,24 +1,35 @@
-# Use a base image with Python and Prefect pre-installed
-FROM prefecthq/prefect:2-python3.11
+# --- STAGE 1: Build the environment ---
+FROM python:3.11-slim as builder
 
-# Set the working directory
+WORKDIR /usr/src/app
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /usr/src/app/wheels -r requirements.txt
+
+# --- STAGE 2: Create the final production image ---
+FROM python:3.11-slim
+
 WORKDIR /app
 
-# Install system dependencies, including 'wait-for-it.sh'
-RUN apt-get update && apt-get install -y --no-install-recommends curl git && \
-    curl -sL https://github.com/vishnubob/wait-for-it/raw/master/wait-for-it.sh -o /usr/local/bin/wait-for-it.sh && \
-    chmod +x /usr/local/bin/wait-for-it.sh && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy your Python dependencies
-COPY requirements.txt ./
+# Copy the built wheels from the builder stage and install them
+COPY --from=builder /usr/src/app/wheels /wheels
+COPY --from=builder /usr/src/app/requirements.txt .
+RUN pip install --no-cache-dir --find-links=/wheels -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Prefect
+RUN pip install "prefect[docker]>=2.15.2"
 
 # Copy all source code directories into the container
-COPY flows/ ./flows/
-COPY ingest/ ./ingest/
-COPY onchain/ ./onchain/
-COPY sentiment/ ./sentiment/
-COPY fastAPI/ ./fastAPI/
+COPY . .
+
+# Expose ports for FastAPI and Prometheus metrics
+EXPOSE 8000 9102 9103 9104 9105 9106 9107 9108 9109 9110

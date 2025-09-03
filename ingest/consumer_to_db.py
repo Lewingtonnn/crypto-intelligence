@@ -23,11 +23,11 @@ MESSAGE_PROCESSING_ERRORS = Counter('message_processing_errors_total', 'Total nu
 DB_CONNECTION_STATUS = Gauge('db_connection_status', 'Status of the database connection (1=up, 0=down).')
 
 # --- Constants and Environment Variables ---
-BATCH_SIZE = int(os.getenv('BATCH_SIZE', 2))
+BATCH_SIZE = int(os.getenv('BATCH_SIZE', 200))
 KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'crypto-market-data')
 DATABASE_URL = os.getenv('DATABASE_URL')
 KAFKA_SERVERS = os.getenv('KAFKA_SERVERS', 'localhost:9092')
-PROMETHEUS_PORT = int(os.getenv('PROMETHEUS_PORT', 9102))
+PROMETHEUS_PORT = int(os.getenv('PROMETHEUS_PORT', 9104))
 
 # --- Database Schema Management ---
 async def create_prices_tables(conn):
