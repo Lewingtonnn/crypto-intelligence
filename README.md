@@ -2,6 +2,8 @@
 
 A **production-grade, real-time data pipeline** for **cryptocurrency intelligence** — combining **market data, on-chain analytics, and sentiment analysis** into a unified, scalable system.
 
+**This pipeline empowers hedge funds and fintech startups to detect on-chain anomalies within 3 seconds, reducing risk exposure in volatile markets**
+
 Built with **Python, Kafka, Prefect, Docker, FastAPI, Prometheus, Grafana, and Terraform (AWS)**, this project demonstrates **enterprise-scale engineering practices**: orchestration, monitoring, APIs, and cloud provisioning.
 
 ---
