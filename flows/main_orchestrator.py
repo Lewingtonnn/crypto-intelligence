@@ -1,10 +1,7 @@
-from prefect import flow, get_run_logger
-from prefect.client.orchestration import get_client
+import sys
+import os
 
-from producers_flows import producers_flow
-from storers_flow import storers_flow
-from processors_flow import processors_flow
-from anomaly_flow import anomaly_detection_flow
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import asyncio
 from prefect import flow, get_run_logger
 

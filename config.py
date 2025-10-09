@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Kafka & Core Services ---
-KAFKA_SERVERS = os.getenv("KAFKA_SERVERS", "kafka:9092")
+KAFKA_SERVERS = os.getenv("KAFKA_SERVERS", "kafka:29092")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "crypto_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")

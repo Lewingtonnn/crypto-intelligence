@@ -32,4 +32,4 @@ RUN pip install "prefect[docker]>=2.15.2"
 COPY . .
 
 # Expose ports for FastAPI and Prometheus metrics
-EXPOSE 8000 9102 9103 9104 9105 9106 9107 9108 9109 9110
+EXPOSE 8000 9102 9103 9104 9105 9106 9107 9108 9109 911
