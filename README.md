@@ -207,7 +207,7 @@ crypto-intelligence/
 
 🛠 Run Locally
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Lewingtonnn/crypto-intelligence
 cd crypto-intelligence-pipeline
 ```
 
