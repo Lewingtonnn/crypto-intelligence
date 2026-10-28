@@ -1,4 +1,4 @@
-# 🚀 Crypto Intelligence Pipeline
+#  Crypto Intelligence Pipeline
 
 A **production-grade, real-time data pipeline** for **cryptocurrency intelligence** — combining **market data, on-chain analytics, and sentiment analysis** into a unified, scalable system.
 
